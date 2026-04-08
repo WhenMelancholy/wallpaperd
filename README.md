@@ -2,7 +2,20 @@
 
 **A video wallpaper daemon for macOS that is completely invisible to Screen Time.**
 
-Every wallpaper app on macOS — Plash, Dynamic Wallpaper, Pap.er — pollutes your Screen Time stats with 24 hours of daily "usage". This is because macOS Screen Time tracks any process with a bundle identifier that has a visible window. There is no way to exclude specific apps from Screen Time. Apple has acknowledged this as a limitation and [has not fixed it in years](https://discussions.apple.com/thread/255498028).
+## The Problem
+
+If you use any dynamic wallpaper app on macOS — [Plash](https://github.com/sindresorhus/Plash), Dynamic Wallpaper, [Pap.er](https://paper.meiyuan.in/), [我的壁纸](https://apps.apple.com/app/id1552826194), or any of the dozens on the App Store — check your Screen Time. You'll find it recording **24 hours of daily usage** for that app. Every. Single. Day.
+
+This isn't a bug in those apps. It's a fundamental flaw in how macOS Screen Time works:
+
+- **iOS Screen Time** tracks foreground (active) app usage
+- **macOS Screen Time** tracks any app with a visible window — even if that window is behind everything else on your desktop
+- All dynamic wallpaper apps work by creating a **full-screen borderless window** at desktop level. To macOS, this looks like the app is "open" 24/7
+- **There is no way to exclude specific apps.** Apple has [acknowledged this](https://discussions.apple.com/thread/255498028) and has not provided a fix since Catalina (2019)
+
+This makes your Screen Time data essentially useless if you use a wallpaper app — your total "screen time" is inflated by 24 hours, and the wallpaper app dominates your usage charts.
+
+## The Solution
 
 `wallpaperd` solves this by being a **bare Mach-O binary** — not a `.app` bundle. No `CFBundleIdentifier` means Screen Time literally cannot record it. Zero workarounds, zero hacks on the data layer. It simply doesn't exist in Screen Time's world.
 
@@ -65,6 +78,19 @@ sed "s|/usr/local/bin/wallpaperd|$HOME/bin/wallpaperd|" LaunchAgent/com.wallpape
 
 # Start
 launchctl load ~/Library/LaunchAgents/com.wallpaperd.plist
+```
+
+## Quick Start with Sample Video
+
+A sample wallpaper video is included in `assets/`:
+
+```bash
+mkdir -p ~/.config/wallpaperd
+echo '{
+  "videoPaths": ["'"$(pwd)"'/assets/wallpaper_seamless.mp4"],
+  "videoGravity": "fill",
+  "muted": true
+}' > ~/.config/wallpaperd/config.json
 ```
 
 ## Configure

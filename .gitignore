@@ -7,8 +7,5 @@ xcuserdata/
 DerivedData/
 Package.resolved
 
-# User assets (videos)
-assets/
-
 # Agent internal docs
 agent/
