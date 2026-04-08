@@ -12,15 +12,15 @@ struct Config: Codable {
     var muted: Bool = true
 
     enum VideoGravityOption: String, Codable {
-        case fill           // resizeAspectFill — crops edges to fill screen
-        case fit            // resizeAspect — letterbox, no cropping
-        case stretch        // resize — distort to fill
+        case fill // resizeAspectFill — crops edges to fill screen
+        case fit // resizeAspect — letterbox, no cropping
+        case stretch // resize — distort to fill
 
         var avGravity: AVLayerVideoGravity {
             switch self {
-            case .fill: return .resizeAspectFill
-            case .fit: return .resizeAspect
-            case .stretch: return .resize
+            case .fill: .resizeAspectFill
+            case .fit: .resizeAspect
+            case .stretch: .resize
             }
         }
     }
@@ -49,8 +49,7 @@ struct Config: Codable {
 
         do {
             let data = try Data(contentsOf: file)
-            let config = try JSONDecoder().decode(Config.self, from: data)
-            return config
+            return try JSONDecoder().decode(Config.self, from: data)
         } catch {
             log.error("Failed to load config: \(error.localizedDescription)")
             return Config()

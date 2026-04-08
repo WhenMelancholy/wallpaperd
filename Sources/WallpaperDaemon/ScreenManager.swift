@@ -1,5 +1,5 @@
-import Cocoa
 import AVFoundation
+import Cocoa
 import os.log
 
 private let log = Logger(subsystem: "wallpaperd", category: "screen")
@@ -7,7 +7,6 @@ private let log = Logger(subsystem: "wallpaperd", category: "screen")
 /// Manages one DesktopWindow per connected screen.
 /// Handles screen plug/unplug and resolution changes.
 final class ScreenManager {
-
     private var windowsByScreenID: [CGDirectDisplayID: DesktopWindow] = [:]
     private weak var videoPlayer: VideoPlayerManager?
 
@@ -26,7 +25,6 @@ final class ScreenManager {
     }
 
     func tearDown() {
-        NotificationCenter.default.removeObserver(self)
         for (_, window) in windowsByScreenID {
             window.detachPlayer()
             window.close()
@@ -34,9 +32,13 @@ final class ScreenManager {
         windowsByScreenID.removeAll()
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     /// Attach an AVPlayer to all existing windows
     func attachPlayer(_ player: AVPlayer?) {
-        guard let player = player else { return }
+        guard let player else { return }
         let gravity = videoPlayer?.currentGravity ?? .resizeAspectFill
         for (_, window) in windowsByScreenID {
             window.attachPlayer(player, gravity: gravity)

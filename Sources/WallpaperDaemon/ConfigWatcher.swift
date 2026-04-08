@@ -5,7 +5,6 @@ private let log = Logger(subsystem: "wallpaperd", category: "watcher")
 
 /// Watches ~/.config/wallpaperd/config.json for changes using GCD file descriptor monitoring.
 final class ConfigWatcher {
-
     private var source: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private let onChange: (Config) -> Void
@@ -42,12 +41,12 @@ final class ConfigWatcher {
         )
 
         source.setEventHandler { [weak self] in
-            guard let self = self else { return }
+            guard let self else { return }
             let flags = source.data
             if flags.contains(.delete) || flags.contains(.rename) {
                 // File was replaced (e.g., editor save-and-rename pattern)
                 log.info("Config file replaced, re-establishing watch")
-                self.stopWatching()
+                stopWatching()
                 // Brief delay to let the new file settle
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     self?.startWatching()
@@ -57,7 +56,7 @@ final class ConfigWatcher {
             } else {
                 log.info("Config file modified")
                 let config = Config.load()
-                self.onChange(config)
+                onChange(config)
             }
         }
 

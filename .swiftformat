@@ -1,0 +1,27 @@
+--swiftversion 5.9
+--indent 4
+--indentcase false
+--trimwhitespace always
+--voidtype void
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--closingparen balanced
+--commas always
+--decimalgrouping 3,4
+--elseposition same-line
+--guardelse next-line
+--header strip
+--ifdef no-indent
+--importgrouping alpha
+--maxwidth 120
+--operatorfunc spaced
+--patternlet hoist
+--ranges spaced
+--disable redundantSelf
+--semicolons inline
+--stripunusedargs closure-only
+--trailingclosures
+--xcodeindentation disabled
+
+--exclude .build,.swiftpm

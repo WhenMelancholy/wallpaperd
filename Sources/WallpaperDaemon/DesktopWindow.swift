@@ -1,10 +1,9 @@
-import Cocoa
 import AVFoundation
+import Cocoa
 
 /// A borderless, click-through window pinned between desktop wallpaper and desktop icons.
 /// Pattern derived from LiveDesk and Aereo open-source projects.
 final class DesktopWindow: NSWindow {
-
     private var playerLayer: AVPlayerLayer?
 
     convenience init(screen: NSScreen) {
@@ -24,10 +23,10 @@ final class DesktopWindow: NSWindow {
         isOpaque = true
         backgroundColor = .black
         hasShadow = false
-        ignoresMouseEvents = true      // Click-through to desktop
+        ignoresMouseEvents = true // Click-through to desktop
         isReleasedWhenClosed = false
-        sharingType = .none            // Don't appear in screen sharing/recording
-        animationBehavior = .none      // No animation on show/hide
+        sharingType = .none // Don't appear in screen sharing/recording
+        animationBehavior = .none // No animation on show/hide
 
         // Set up content view with layer backing
         let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
@@ -35,9 +34,14 @@ final class DesktopWindow: NSWindow {
         contentView = view
     }
 
-    // Never steal focus from other apps
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
+    /// Never steal focus from other apps
+    override var canBecomeKey: Bool {
+        false
+    }
+
+    override var canBecomeMain: Bool {
+        false
+    }
 
     // MARK: - Video Layer
 
@@ -45,7 +49,7 @@ final class DesktopWindow: NSWindow {
         // Remove existing layer
         playerLayer?.removeFromSuperlayer()
 
-        guard let contentView = contentView else { return }
+        guard let contentView else { return }
 
         let layer = AVPlayerLayer(player: player)
         layer.frame = contentView.bounds
@@ -64,7 +68,7 @@ final class DesktopWindow: NSWindow {
     /// Update frame to match current screen geometry (e.g., after resolution change)
     func updateFrame(for screen: NSScreen) {
         setFrame(screen.frame, display: false)
-        if let contentView = contentView {
+        if let contentView {
             playerLayer?.frame = contentView.bounds
         }
     }

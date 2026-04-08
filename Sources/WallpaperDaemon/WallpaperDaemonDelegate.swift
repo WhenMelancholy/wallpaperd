@@ -4,7 +4,6 @@ import os.log
 private let log = Logger(subsystem: "wallpaperd", category: "daemon")
 
 final class WallpaperDaemonDelegate: NSObject, NSApplicationDelegate {
-
     private let screenManager = ScreenManager()
     private let videoPlayer = VideoPlayerManager()
     private var configWatcher: ConfigWatcher?
@@ -20,7 +19,8 @@ final class WallpaperDaemonDelegate: NSObject, NSApplicationDelegate {
 
         // Start playback
         if let firstVideo = config.videoPaths.first,
-           FileManager.default.fileExists(atPath: firstVideo) {
+           FileManager.default.fileExists(atPath: firstVideo)
+        {
             videoPlayer.play(url: URL(fileURLWithPath: firstVideo), gravity: config.videoGravity.avGravity)
             screenManager.attachPlayer(videoPlayer.player)
         } else {
@@ -50,7 +50,8 @@ final class WallpaperDaemonDelegate: NSObject, NSApplicationDelegate {
         log.info("Config updated")
 
         if let firstVideo = config.videoPaths.first,
-           FileManager.default.fileExists(atPath: firstVideo) {
+           FileManager.default.fileExists(atPath: firstVideo)
+        {
             videoPlayer.play(url: URL(fileURLWithPath: firstVideo), gravity: config.videoGravity.avGravity)
             screenManager.attachPlayer(videoPlayer.player)
         }
@@ -69,7 +70,7 @@ final class WallpaperDaemonDelegate: NSObject, NSApplicationDelegate {
             }
         }
         usr1Source.resume()
-        signal(SIGUSR1, SIG_IGN)  // Let DispatchSource handle it
+        signal(SIGUSR1, SIG_IGN) // Let DispatchSource handle it
 
         // SIGUSR2 = reload config
         let usr2Source = DispatchSource.makeSignalSource(signal: SIGUSR2, queue: .main)

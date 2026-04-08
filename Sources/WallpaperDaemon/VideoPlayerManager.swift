@@ -8,7 +8,6 @@ private let log = Logger(subsystem: "wallpaperd", category: "player")
 /// stutter only happens every N * duration instead of every loop.
 /// Combined with ffmpeg crossfade preprocessing, the loop is virtually invisible.
 final class VideoPlayerManager {
-
     private(set) var player: AVPlayer?
     private(set) var currentGravity: AVLayerVideoGravity = .resizeAspectFill
 
@@ -30,11 +29,10 @@ final class VideoPlayerManager {
         currentURL = url
 
         let composition = createRepeatedComposition(from: url)
-        let item: AVPlayerItem
-        if let composition = composition {
-            item = AVPlayerItem(asset: composition)
+        let item = if let composition {
+            AVPlayerItem(asset: composition)
         } else {
-            item = AVPlayerItem(url: url)
+            AVPlayerItem(url: url)
         }
 
         let player = AVPlayer(playerItem: item)
@@ -51,7 +49,7 @@ final class VideoPlayerManager {
             object: item,
             queue: .main
         ) { [weak self, weak player] _ in
-            guard let player = player else { return }
+            guard let player else { return }
             player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                 player.play()
             }
@@ -99,7 +97,7 @@ final class VideoPlayerManager {
     // MARK: - Health Check
 
     private func checkPlaybackHealth() {
-        guard let player = player else { return }
+        guard let player else { return }
 
         // If player rate is 0 (paused/stalled) but we expect it to be playing, restart
         if player.rate == 0 {
@@ -130,7 +128,8 @@ final class VideoPlayerManager {
         guard let compositionTrack = composition.addMutableTrack(
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else {
+        )
+        else {
             log.error("Failed to add composition track")
             return nil
         }
@@ -138,7 +137,7 @@ final class VideoPlayerManager {
         let duration = asset.duration
         let timeRange = CMTimeRange(start: .zero, duration: duration)
 
-        for i in 0..<repeatCount {
+        for i in 0 ..< repeatCount {
             let insertTime = CMTimeMultiply(duration, multiplier: Int32(i))
             do {
                 try compositionTrack.insertTimeRange(timeRange, of: videoTrack, at: insertTime)
