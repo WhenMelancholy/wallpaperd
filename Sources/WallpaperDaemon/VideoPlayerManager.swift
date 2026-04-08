@@ -13,12 +13,13 @@ final class VideoPlayerManager {
     private(set) var currentGravity: AVLayerVideoGravity = .resizeAspectFill
 
     private var loopObserver: NSObjectProtocol?
+    private var watchdog: Timer?
     private var videoPaths: [String] = []
     private var currentIndex: Int = 0
+    private var currentURL: URL?
 
     /// How many times to repeat the video in the composition.
-    /// Higher = less frequent stutter, but more memory for the composition metadata.
-    /// 50 repeats of an 8s video = ~400s between stutters = ~6.7 minutes.
+    /// 50 repeats of an 8s video = ~350s between seeks = ~6 minutes.
     private let repeatCount = 50
 
     // MARK: - Playback Control
@@ -26,54 +27,57 @@ final class VideoPlayerManager {
     func play(url: URL, gravity: AVLayerVideoGravity = .resizeAspectFill) {
         stop()
         currentGravity = gravity
+        currentURL = url
 
-        // Try composition-based playback first
-        if let composition = createRepeatedComposition(from: url) {
-            let item = AVPlayerItem(asset: composition)
-            let player = AVPlayer(playerItem: item)
-            configurePlayer(player)
-            self.player = player
-
-            // When the long composition ends, seek back to zero
-            loopObserver = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: item,
-                queue: .main
-            ) { [weak player] _ in
-                player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-            }
-
-            player.play()
-            log.info("Playing (composition x\(self.repeatCount)): \(url.lastPathComponent)")
+        let composition = createRepeatedComposition(from: url)
+        let item: AVPlayerItem
+        if let composition = composition {
+            item = AVPlayerItem(asset: composition)
         } else {
-            // Fallback: plain AVPlayer
-            let player = AVPlayer(url: url)
-            configurePlayer(player)
-            player.actionAtItemEnd = .none
-            self.player = player
-
-            if let item = player.currentItem {
-                loopObserver = NotificationCenter.default.addObserver(
-                    forName: .AVPlayerItemDidPlayToEndTime,
-                    object: item,
-                    queue: .main
-                ) { [weak player] _ in
-                    player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-                }
-            }
-
-            player.play()
-            log.info("Playing (fallback): \(url.lastPathComponent)")
+            item = AVPlayerItem(url: url)
         }
+
+        let player = AVPlayer(playerItem: item)
+        player.isMuted = true
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        player.allowsExternalPlayback = false
+        player.actionAtItemEnd = .none
+        self.player = player
+
+        // Loop: seek back to zero when composition ends
+        loopObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self, weak player] _ in
+            guard let player = player else { return }
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                player.play()
+            }
+            log.info("Loop reset")
+        }
+
+        // Watchdog: check every 10s that playback hasn't stalled
+        watchdog = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.checkPlaybackHealth()
+        }
+
+        player.play()
+        let label = composition != nil ? "composition x\(repeatCount)" : "fallback"
+        log.info("Playing (\(label)): \(url.lastPathComponent)")
     }
 
     func stop() {
+        watchdog?.invalidate()
+        watchdog = nil
         if let observer = loopObserver {
             NotificationCenter.default.removeObserver(observer)
             loopObserver = nil
         }
         player?.pause()
         player = nil
+        currentURL = nil
     }
 
     func nextVideo() {
@@ -92,18 +96,29 @@ final class VideoPlayerManager {
 
     deinit { stop() }
 
-    // MARK: - Private
+    // MARK: - Health Check
 
-    private func configurePlayer(_ player: AVPlayer) {
-        player.isMuted = true
-        player.automaticallyWaitsToMinimizeStalling = false
-        player.preventsDisplaySleepDuringVideoPlayback = false
-        player.allowsExternalPlayback = false
+    private func checkPlaybackHealth() {
+        guard let player = player else { return }
+
+        // If player rate is 0 (paused/stalled) but we expect it to be playing, restart
+        if player.rate == 0 {
+            if player.currentItem?.status == .failed {
+                log.warning("Player item failed, restarting from scratch")
+                if let url = currentURL {
+                    play(url: url, gravity: currentGravity)
+                }
+            } else {
+                log.warning("Player stalled (rate=0), resuming")
+                player.play()
+            }
+        }
     }
 
+    // MARK: - Composition
+
     /// Repeat the video track N times in an AVMutableComposition.
-    /// The composition metadata is lightweight — only the track references are duplicated,
-    /// not the actual video data. The file is read once from disk.
+    /// Only the track references are duplicated, not the actual video data.
     private func createRepeatedComposition(from url: URL) -> AVMutableComposition? {
         let asset = AVURLAsset(url: url)
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
@@ -134,7 +149,6 @@ final class VideoPlayerManager {
         }
 
         compositionTrack.preferredTransform = videoTrack.preferredTransform
-        log.info("Composition created: \(self.repeatCount) x \(CMTimeGetSeconds(duration))s = \(CMTimeGetSeconds(duration) * Double(self.repeatCount))s")
         return composition
     }
 }
