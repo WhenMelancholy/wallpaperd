@@ -4,15 +4,15 @@ import os.log
 private let log = Logger(subsystem: "wallpaperd", category: "player")
 
 /// Manages a single shared AVPlayer for video wallpaper playback.
-/// Uses AVMutableComposition to repeat the video N times, so the seek-to-zero
-/// stutter only happens every N * duration instead of every loop.
-/// Combined with ffmpeg crossfade preprocessing, the loop is virtually invisible.
+/// Loads video entirely into memory via InMemoryAssetLoader (no continuous disk I/O).
+/// Uses AVMutableComposition to repeat the video N times for near-infinite seamless looping.
 final class VideoPlayerManager {
     private(set) var player: AVPlayer?
     private(set) var currentGravity: AVLayerVideoGravity = .resizeAspectFill
 
     private var loopObserver: NSObjectProtocol?
     private var watchdog: Timer?
+    private var assetLoader: InMemoryAssetLoader? // Must retain for asset's lifetime
     private var videoPaths: [String] = []
     private var currentIndex: Int = 0
     private var currentURL: URL?
@@ -28,41 +28,30 @@ final class VideoPlayerManager {
         currentGravity = gravity
         currentURL = url
 
-        let composition = createRepeatedComposition(from: url)
+        // Load video into memory — no more continuous disk reads
+        guard let (memoryAsset, loader) = InMemoryAssetLoader.createAsset(from: url) else {
+            log.error("Failed to load video into memory, falling back to disk")
+            playFromDisk(url: url, gravity: gravity)
+            return
+        }
+        self.assetLoader = loader
+
+        let composition = createRepeatedComposition(from: memoryAsset)
         let item = if let composition {
             AVPlayerItem(asset: composition)
         } else {
-            AVPlayerItem(url: url)
+            AVPlayerItem(asset: memoryAsset)
         }
 
         let player = AVPlayer(playerItem: item)
-        player.isMuted = true
-        player.automaticallyWaitsToMinimizeStalling = false
-        player.preventsDisplaySleepDuringVideoPlayback = false
-        player.allowsExternalPlayback = false
-        player.actionAtItemEnd = .none
+        configurePlayer(player)
         self.player = player
 
-        // Loop: seek back to zero when composition ends
-        loopObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self, weak player] _ in
-            guard let player else { return }
-            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                player.play()
-            }
-            log.info("Loop reset")
-        }
-
-        // Watchdog: check every 10s that playback hasn't stalled
-        watchdog = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.checkPlaybackHealth()
-        }
+        setupLoop(item: item, player: player)
+        startWatchdog()
 
         player.play()
-        let label = composition != nil ? "composition x\(repeatCount)" : "fallback"
+        let label = composition != nil ? "in-memory composition x\(self.repeatCount)" : "in-memory"
         log.info("Playing (\(label)): \(url.lastPathComponent)")
     }
 
@@ -75,6 +64,7 @@ final class VideoPlayerManager {
         }
         player?.pause()
         player = nil
+        assetLoader = nil
         currentURL = nil
     }
 
@@ -94,15 +84,52 @@ final class VideoPlayerManager {
 
     deinit { stop() }
 
-    // MARK: - Health Check
+    // MARK: - Private
+
+    /// Fallback: play directly from disk if memory loading fails
+    private func playFromDisk(url: URL, gravity: AVLayerVideoGravity) {
+        let item = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: item)
+        configurePlayer(player)
+        self.player = player
+        setupLoop(item: item, player: player)
+        startWatchdog()
+        player.play()
+        log.info("Playing (disk fallback): \(url.lastPathComponent)")
+    }
+
+    private func configurePlayer(_ player: AVPlayer) {
+        player.isMuted = true
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.preventsDisplaySleepDuringVideoPlayback = false
+        player.allowsExternalPlayback = false
+        player.actionAtItemEnd = .none
+    }
+
+    private func setupLoop(item: AVPlayerItem, player: AVPlayer) {
+        loopObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak player] _ in
+            guard let player else { return }
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                player.play()
+            }
+        }
+    }
+
+    private func startWatchdog() {
+        watchdog = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            self?.checkPlaybackHealth()
+        }
+    }
 
     private func checkPlaybackHealth() {
         guard let player else { return }
-
-        // If player rate is 0 (paused/stalled) but we expect it to be playing, restart
         if player.rate == 0 {
             if player.currentItem?.status == .failed {
-                log.warning("Player item failed, restarting from scratch")
+                log.warning("Player item failed, restarting")
                 if let url = currentURL {
                     play(url: url, gravity: currentGravity)
                 }
@@ -116,9 +143,7 @@ final class VideoPlayerManager {
     // MARK: - Composition
 
     /// Repeat the video track N times in an AVMutableComposition.
-    /// Only the track references are duplicated, not the actual video data.
-    private func createRepeatedComposition(from url: URL) -> AVMutableComposition? {
-        let asset = AVURLAsset(url: url)
+    private func createRepeatedComposition(from asset: AVAsset) -> AVMutableComposition? {
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
             log.error("No video track in asset")
             return nil
